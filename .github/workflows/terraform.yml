@@ -14,8 +14,8 @@ on:
 
 env:
  # Credentials for deployment to AWS
- ASW_ACCESS_KEY_ID: ${{ sercrets.AWS_ACCESS_KEY_ID }}
- ASW_SECRET_ACCESS_KEY: ${{ sercrets.AWS_SECRET_ACCESS_KEY }}
+ ASW_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+ ASW_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
  # S3 bucket for the Terraform state
  BUCKET_TF_STATE: ${{ sercrets.BUCKET_TS_STATE }}
  ASW_REGION: us-east-1
