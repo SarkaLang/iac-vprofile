@@ -1,0 +1,102 @@
+name: "Vprofile IAC"
+# workflow se spustí pokud je push na hlavní větvi nebo stage nebo jsou změny v adresáři terraform/ nebo pokud je pull request do větve main a obsahuje změny v terraform/
+on: 
+  push:
+    branches:
+      - main
+      - stage
+    paths:
+      - terraform/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - terraform/**
+
+# globální proměnné
+env:
+ # Credentials for deployment to AWS
+ AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+ AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+ # S3 bucket for the Terraform state
+ BUCKET_TF_STATE: ${{ secrets.BUCKET_TF_STATE }}
+ AWS_REGION: us-east-1
+ EKS_CLUSTER: vprofile-eks
+
+jobs:
+   terraform:
+     name: "Apply terraform code changes"
+     runs-on: ubuntu-latest
+     defaults:
+       run:
+         shell: bash
+         working-directory: ./terraform
+
+# načte (klonuje) repozitář do běžícího jobu
+     steps:   
+       - name: Checkout source code
+         uses: actions/checkout@v4.2.2
+
+# nainstaluje verzi trfm
+       - name: Setup Terraform with specified verison on the runner
+         uses: hashicorp/setup-terraform@v3.1.2
+         with:
+           terraform_version: 1.6.3
+
+# inicializace trfm - konfigurace backend (S3 bucket) pro uložení tfstate
+       - name: Terraform init
+         id: init
+         run: terraform init -backend-config="bucket=$BUCKET_TF_STATE"
+
+# check formátu fmt souborů - správné odsazení a naformátování
+       - name: Terraform format
+         id: fmt
+         run: terraform fmt -check
+
+# kontrola kódu (syntakticky správný a validní)
+       - name: Terraform validate
+         id: validate
+         run: terraform validate
+
+# plán změn infrastruktury, výstup se ulož do planfile
+       - name: Terraform plan
+         id: plan
+         run: terraform plan -no-color -input=false -out -planfile
+         continue-on-error: true
+
+# pokud plan selže skončí celý job chybou
+       - name: Terraform plan status
+         if: steps.plan.outcome == 'failure'
+         run: exit 1
+
+# pouze při push do main se aplikují změny do infrastukruty
+       - name: Terraform Apply
+         id: apple
+         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+         run: terraform apply -auto-approve -input=false -parallelism=1 planfil  
+
+# nastavení AWS přihlašovacích údajů pro komunikaci s AWS účtem
+       - name: Configure AWS credentials
+         uses: aws-actions/configure-aws-credentials@v1
+         with:
+           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+           aws-region: ${{ env.AWS_REGION }}
+
+# získá kubeconfig, aby bylo možné přistupovat ke Kubernetes clusteru (EKS)
+       - name: Get Kube config file
+         id: getconfig
+         if: steps.apple.outcome == 'success'
+         run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}          
+
+# nasadí ingress controller do cluster
+       - name: Install Ingress controller
+         if: steps.apple.outcome == 'success' && steps.getconfig.outcome == 'success'
+         run: kubectl apply -f https://raw.githubusercontent.kubernetes/ingress-nginx/controller-v1.1.3/deploy/statis/provider/aws/deploy.yaml
+         
+            
+
+        
+
+
+                

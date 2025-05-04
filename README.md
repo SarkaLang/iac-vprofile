@@ -5,6 +5,10 @@
 ## Tools required
 Terraform version 1.6.3
 
+# Two branches
+* main
+* stage
+
 ### Steps
 * terraform init
 * terraform fmt -check
